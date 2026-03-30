@@ -1,62 +1,50 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-DATABASE_URL=postgresql://postgres:EdgeBet2024!Secure@db.ryylrpudpujkjmwjhbdz.supabase.co:5432/postgres
-SECRET_KEY=edgebet-secret-key-nx2024-changeinprod
-ODDS_API_KEY=8885544010e464b5d0beb037d2245d8f
-ENVIRONMENT=development
-LOG_LEVEL=INFO
-from contextlib import asynccontextmanager
-import logging
+from logging.config import fileConfig
+from sqlalchemy import engine_from_config, pool
+from alembic import context
+import os
+import sys
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.config import get_settings
-from app.core.database import engine
-from app.db import models
-from app.api.routes import auth, picks, bets
+from app.db.models import Base
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 settings = get_settings()
+config = context.config
+config.set_main_option("sqlalchemy.url", settings.database_url)
 
-# Create all tables on startup (graceful — won't crash if DB unreachable)
-try:
-    models.Base.metadata.create_all(bind=engine)
-    logger.info("Database tables ready")
-except Exception as e:
-    logger.warning(f"DB not reachable on startup: {e}")
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
 
-scheduler = AsyncIOScheduler()
+target_metadata = Base.metadata
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Start background scheduler
-    scheduler.start()
-    logger.info("Scheduler started")
-    yield
-    scheduler.shutdown()
-    logger.info("Scheduler stopped")
+def run_migrations_offline() -> None:
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+    with context.begin_transaction():
+        context.run_migrations()
 
 
-app = FastAPI(
-    title="EdgeBet API",
-    description="Data-driven sports betting analytics. Not financial advice.",
-    version="0.1.0",
-    lifespan=lifespan,
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # tighten in production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.include_router(auth.router, prefix="/api/v1")
-app.include_router(picks.router, prefix="/api/v1")
-app.include_router(bets.router, prefix="/api/v1")
+def run_migrations_online() -> None:
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+    with connectable.connect() as connection:
+        context.configure(connection=connection, target_metadata=target_metadata)
+        with context.begin_transaction():
+            context.run_migrations()
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok", "version": "0.1.0"}
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()

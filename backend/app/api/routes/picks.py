@@ -18,19 +18,20 @@ def get_todays_picks(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Returns today's value bets, sorted by EV descending.
+    Returns upcoming value bets (next 48 hours), sorted by EV descending.
     Free users see top 2. Premium users see all.
     """
     now = datetime.now(timezone.utc)
-    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    end_of_day = start_of_day + timedelta(days=1)
+    # Include games from past 24h (in case of timezone issues) to next 48h
+    start_window = now - timedelta(hours=24)
+    end_window = now + timedelta(hours=48)
 
     picks = (
         db.query(Prediction)
         .join(Game)
         .filter(
-            Game.commence_time >= start_of_day,
-            Game.commence_time < end_of_day,
+            Game.commence_time >= start_window,
+            Game.commence_time < end_window,
             Prediction.expected_value >= 0.03,
         )
         .order_by(Prediction.expected_value.desc())
