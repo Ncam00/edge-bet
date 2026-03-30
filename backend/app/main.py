@@ -13,8 +13,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Create all tables on startup
-models.Base.metadata.create_all(bind=engine)
+# Create all tables on startup (graceful — won't crash if DB unreachable)
+try:
+    models.Base.metadata.create_all(bind=engine)
+    logger.info("Database tables ready")
+except Exception as e:
+    logger.warning(f"DB not reachable on startup: {e}")
 
 scheduler = AsyncIOScheduler()
 

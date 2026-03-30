@@ -1,24 +1,74 @@
-fastapi==0.111.0
-uvicorn[standard]==0.30.0
-sqlalchemy==2.0.30
-alembic==1.13.1
-psycopg2-binary==2.9.9
-pydantic==2.7.1
-pydantic-settings==2.3.0
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-python-multipart==0.0.9
-httpx==0.27.0
-apscheduler==3.10.4
+# EdgeBet Setup Script — run from: C:\Users\admin\Downloads\edge-bet\edge-bet\backend
+# Usage: powershell -ExecutionPolicy Bypass -File setup.ps1
 
-# ML
-xgboost==2.0.3
-scikit-learn==1.5.0
-pandas==2.2.2
-numpy==1.26.4
-nba_api==1.4.1
+Write-Host "`n=== EdgeBet Backend Setup ===" -ForegroundColor Cyan
 
-# Dev
-pytest==8.2.0
-pytest-asyncio==0.23.7
-python-dotenv==1.0.1
+# ── Step 1: Fix requirements.txt ─────────────────────────────
+Write-Host "`n[1/5] Fixing requirements.txt..." -ForegroundColor Yellow
+@"
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+sqlalchemy>=2.0.30
+alembic>=1.13.1
+psycopg2-binary>=2.9.9
+pydantic>=2.7.1
+pydantic-settings>=2.3.0
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+python-multipart>=0.0.9
+httpx>=0.27.0
+apscheduler>=3.10.4
+xgboost>=2.0.3
+pandas>=2.2.2
+numpy>=1.26.4
+nba_api>=1.4.1
+pytest>=8.2.0
+pytest-asyncio>=0.23.7
+python-dotenv>=1.0.1
+"@ | Set-Content requirements.txt
+Write-Host "   requirements.txt updated" -ForegroundColor Green
+
+# ── Step 2: Install core web packages ────────────────────────
+Write-Host "`n[2/5] Installing web packages..." -ForegroundColor Yellow
+python -m pip install --upgrade pip --quiet
+python -m pip install `
+  fastapi `
+  "uvicorn[standard]" `
+  sqlalchemy `
+  alembic `
+  psycopg2-binary `
+  pydantic `
+  pydantic-settings `
+  "python-jose[cryptography]" `
+  "passlib[bcrypt]" `
+  python-multipart `
+  httpx `
+  apscheduler `
+  python-dotenv
+Write-Host "   Web packages installed" -ForegroundColor Green
+
+# ── Step 3: Install ML packages ──────────────────────────────
+Write-Host "`n[3/5] Installing ML packages..." -ForegroundColor Yellow
+python -m pip install xgboost pandas numpy nba_api
+Write-Host "   ML packages installed" -ForegroundColor Green
+
+# ── Step 4: Try scikit-learn ─────────────────────────────────
+Write-Host "`n[4/5] Installing scikit-learn..." -ForegroundColor Yellow
+python -m pip install scikit-learn
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "   scikit-learn installed" -ForegroundColor Green
+} else {
+    Write-Host "   scikit-learn skipped (Python 3.14 not yet supported — OK for now)" -ForegroundColor Yellow
+}
+
+# ── Step 5: Verify uvicorn ───────────────────────────────────
+Write-Host "`n[5/5] Verifying install..." -ForegroundColor Yellow
+python -c "import fastapi; import uvicorn; import sqlalchemy; import psycopg2; print('All core packages OK')"
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "`n=== Setup Complete! ===" -ForegroundColor Green
+    Write-Host "`nNow run:" -ForegroundColor Cyan
+    Write-Host "   python -m uvicorn app.main:app --reload" -ForegroundColor White
+    Write-Host "`nThen open: http://localhost:8000/docs" -ForegroundColor Cyan
+} else {
+    Write-Host "`nSome packages missing — check errors above" -ForegroundColor Red
+}
