@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, get_current_user_optional
 from app.db.models import Prediction, Game, User, PlanType
 from app.api.schemas import PredictionOut
 
@@ -11,18 +12,74 @@ router = APIRouter(prefix="/picks", tags=["picks"])
 
 FREE_PICKS_LIMIT = 2
 
+# Demo picks for unauthenticated users
+DEMO_PICKS = [
+    {
+        "id": 1,
+        "game": {
+            "id": 1,
+            "home_team": "Boston Celtics",
+            "away_team": "Los Angeles Lakers",
+            "commence_time": (datetime.now(timezone.utc) + timedelta(hours=3)).isoformat(),
+        },
+        "market": "moneyline",
+        "selection": "Boston Celtics",
+        "model_probability": 0.68,
+        "implied_probability": 0.55,
+        "decimal_odds": 1.82,
+        "expected_value": 0.124,
+        "confidence_label": "high",
+    },
+    {
+        "id": 2,
+        "game": {
+            "id": 2,
+            "home_team": "Golden State Warriors",
+            "away_team": "Denver Nuggets",
+            "commence_time": (datetime.now(timezone.utc) + timedelta(hours=5)).isoformat(),
+        },
+        "market": "spread",
+        "selection": "Denver Nuggets +3.5",
+        "model_probability": 0.58,
+        "implied_probability": 0.48,
+        "decimal_odds": 2.08,
+        "expected_value": 0.083,
+        "confidence_label": "medium",
+    },
+    {
+        "id": 3,
+        "game": {
+            "id": 3,
+            "home_team": "Phoenix Suns",
+            "away_team": "Milwaukee Bucks",
+            "commence_time": (datetime.now(timezone.utc) + timedelta(hours=7)).isoformat(),
+        },
+        "market": "totals",
+        "selection": "Over 225.5",
+        "model_probability": 0.62,
+        "implied_probability": 0.52,
+        "decimal_odds": 1.92,
+        "expected_value": 0.096,
+        "confidence_label": "medium",
+    },
+]
 
-@router.get("/today", response_model=list[PredictionOut])
+
+@router.get("/today")
 def get_todays_picks(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """
     Returns upcoming value bets (next 48 hours), sorted by EV descending.
+    Unauthenticated users see demo picks.
     Free users see top 2. Premium users see all.
     """
+    # Return demo data for unauthenticated users
+    if current_user is None:
+        return DEMO_PICKS
+    
     now = datetime.now(timezone.utc)
-    # Include games from past 24h (in case of timezone issues) to next 48h
     start_window = now - timedelta(hours=24)
     end_window = now + timedelta(hours=48)
 
@@ -37,6 +94,10 @@ def get_todays_picks(
         .order_by(Prediction.expected_value.desc())
         .all()
     )
+
+    # If no picks in DB, return demo
+    if not picks:
+        return DEMO_PICKS
 
     if current_user.plan == PlanType.free:
         picks = picks[:FREE_PICKS_LIMIT]

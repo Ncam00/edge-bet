@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.core.config import get_settings
@@ -11,7 +11,7 @@ from app.core.database import get_db
 settings = get_settings()
 # Use sha256_crypt for Python 3.14 compatibility (bcrypt has issues)
 pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
@@ -46,6 +46,8 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if token is None:
+        raise credentials_exception
     payload = decode_token(token)
     if payload is None:
         raise credentials_exception
@@ -55,4 +57,25 @@ async def get_current_user(
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise credentials_exception
+    return user
+
+
+async def get_current_user_optional(
+    token: Optional[str] = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    """
+    Optional auth dependency - returns None if no valid token provided.
+    Use for endpoints that work both authenticated and unauthenticated.
+    """
+    from app.db.models import User
+    if token is None:
+        return None
+    payload = decode_token(token)
+    if payload is None:
+        return None
+    user_id: int = payload.get("sub")
+    if user_id is None:
+        return None
+    user = db.query(User).filter(User.id == user_id).first()
     return user

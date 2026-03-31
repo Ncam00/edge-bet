@@ -6,7 +6,7 @@ import logging
 from app.core.config import get_settings
 from app.core.database import engine
 from app.db import models
-from app.api.routes import auth, picks, bets
+from app.api.routes import auth, picks, bets, props, live, sports, racing
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -28,6 +28,10 @@ app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_credentials=True, 
 app.include_router(auth.router, prefix='/api/v1')
 app.include_router(picks.router, prefix='/api/v1')
 app.include_router(bets.router, prefix='/api/v1')
+app.include_router(props.router, prefix='/api/v1/props', tags=['Player Props'])
+app.include_router(live.router, prefix='/api/v1/live', tags=['Live Betting'])
+app.include_router(sports.router, prefix='/api/v1/sports', tags=['All Sports'])
+app.include_router(racing.router, prefix='/api/v1/racing', tags=['Horse & Greyhound Racing'])
 @app.get('/health')
 def health():
     return {'status': 'ok', 'version': '0.1.0'}

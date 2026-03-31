@@ -43,6 +43,7 @@ class Game(Base):
     status = Column(String, default="upcoming")  # upcoming, live, completed
     home_score = Column(Integer, nullable=True)
     away_score = Column(Integer, nullable=True)
+    raw_odds = Column(Text, nullable=True)  # JSON string of bookmaker odds
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     predictions = relationship("Prediction", back_populates="game")

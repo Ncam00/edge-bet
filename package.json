@@ -1,0 +1,6 @@
+{
+  "name": "edge-bet",
+  "version": "1.0.0",
+  "workspaces": ["frontend"],
+  "private": true
+}

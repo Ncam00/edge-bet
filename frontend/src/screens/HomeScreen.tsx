@@ -22,10 +22,11 @@ export const HomeScreen = () => {
   const loadPicks = async () => {
     try {
       const data = await getTodaysPicks();
-      setPicks(data);
+      setPicks(Array.isArray(data) ? data : []);
       setError(null);
     } catch (e: any) {
       setError('Could not load picks. Please try again.');
+      setPicks([]);
     }
   };
 

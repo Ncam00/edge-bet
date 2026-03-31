@@ -1,5 +1,6 @@
 """
-Full pipeline: Fetch odds → Run model → Calculate EV → Save predictions
+Full pipeline: Fetch odds → Run ADVANCED model → Calculate EV → Save predictions
+Uses the Player-Adjusted Team Strength Model (PATSM)
 """
 import sys
 sys.path.insert(0, '.')
@@ -12,6 +13,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.services.fetch_odds import fetch_nba_odds
 from app.ml.ev_engine import compute_ev, implied_probability, confidence_label
+from app.ml.advanced_model import get_advanced_model
 from app.db.models import Base, Game, Prediction
 from app.core.config import get_settings
 

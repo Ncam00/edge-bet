@@ -1,0 +1,8 @@
+2026-03-31 11:28:06,896 [INFO] Adding job tentatively -- it will be properly scheduled when the scheduler starts
+2026-03-31 11:28:06,914 [INFO] ------------------------------------------------------------
+2026-03-31 11:28:06,917 [INFO] Added job "PATSM Value Bet Scanner" to job store "default"
+2026-03-31 11:28:06,918 [INFO] Scheduler started
+2026-03-31 11:28:06,925 [INFO] Running job "PATSM Value Bet Scanner (trigger: interval[2:00:00], next run at: 2026-03-31 11:28:06 NZDT)" (scheduled at 2026-03-31 11:28:06.896183+13:00)
+2026-03-31 11:28:06,926 [INFO] ============================================================
+2026-03-31 11:28:06,950 [INFO] ============================================================
+2026-03-31 11:28:08,014 [INFO] Job "PATSM Value Bet Scanner (trigger: interval[2:00:00], next run at: 2026-03-31 13:28:06 NZDT)" executed successfully

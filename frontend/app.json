@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "EdgeBet",
+    "slug": "edgebet",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "edgebet",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#1a1a2e"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.edgebet.app"
+    },
+    "android": {
+      "package": "com.edgebet.app"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "edgebet-local"
+      }
+    }
+  }
+}

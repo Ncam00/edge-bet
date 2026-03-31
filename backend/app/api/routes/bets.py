@@ -34,6 +34,8 @@ def place_bet(
     current_user.bankroll -= body.stake
     db.commit()
     db.refresh(bet)
+    # Eagerly load game relationship for response
+    _ = bet.game
     return bet
 
 
