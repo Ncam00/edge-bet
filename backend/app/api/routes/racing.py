@@ -4,11 +4,14 @@ Provides endpoints for horse and greyhound racing data with live video integrati
 """
 from fastapi import APIRouter, Query
 from typing import Optional
+from datetime import datetime, timezone
 from app.services.racing_service import (
     get_racing_service,
     RaceType,
 )
 from app.services.video_service import video_service
+from app.services.betfair_service import get_betfair_service
+from app.services.replay_service import get_replay_service
 
 router = APIRouter(tags=["racing"])
 
@@ -470,3 +473,354 @@ def get_regional_streams(region: str):
         "streams": streams,
         "recommended": streams[0] if streams else None
     }
+
+
+# =============================================================================
+# BETFAIR EXCHANGE LIVE ODDS
+# =============================================================================
+
+@router.get("/betfair/markets")
+async def get_betfair_markets(
+    race_type: str = Query("horse", description="'horse' or 'greyhound'"),
+    country: Optional[str] = Query(None, description="Country code: GB, IE, AU"),
+    hours_ahead: int = Query(4, ge=1, le=24, description="Hours ahead to look")
+):
+    """
+    Get live racing odds from Betfair Exchange.
+    Provides real-time back/lay prices and market liquidity.
+    
+    Falls back to demo data if Betfair credentials not configured.
+    """
+    service = get_betfair_service()
+    
+    country_codes = [country] if country else None
+    
+    markets = await service.get_racing_markets(
+        event_type=race_type,
+        country_codes=country_codes,
+        hours_ahead=hours_ahead
+    )
+    
+    now = datetime.now(timezone.utc)
+    
+    return {
+        "source": "Betfair Exchange" if hasattr(service, 'session_token') else "Demo Mode",
+        "count": len(markets),
+        "markets": [
+            {
+                "market_id": m.market_id,
+                "market_name": m.market_name,
+                "track": m.event_venue,
+                "race_number": m.race_number,
+                "start_time": m.market_start_time.isoformat(),
+                "countdown_seconds": max(0, int((m.market_start_time - now).total_seconds())),
+                "status": m.status.value,
+                "total_matched": m.total_matched,
+                "country": m.country_code,
+                "race_type": m.race_type,
+                "runners": [
+                    {
+                        "selection_id": r.selection_id,
+                        "name": r.runner_name,
+                        "sort_priority": r.sort_priority,
+                        "back_price": r.back_price,
+                        "back_size": r.back_size,
+                        "lay_price": r.lay_price,
+                        "lay_size": r.lay_size,
+                        "last_traded": r.last_traded_price,
+                        "total_matched": r.total_matched,
+                        "implied_probability": round(r.implied_probability * 100, 1),
+                        "status": r.status
+                    }
+                    for r in m.runners
+                ]
+            }
+            for m in markets
+        ]
+    }
+
+
+@router.get("/betfair/market/{market_id}")
+async def get_betfair_market_prices(market_id: str):
+    """Get live prices for a specific Betfair market."""
+    service = get_betfair_service()
+    
+    if hasattr(service, 'get_market_prices'):
+        market = await service.get_market_prices(market_id)
+        
+        if market:
+            return {
+                "market_id": market.market_id,
+                "status": market.status.value,
+                "total_matched": market.total_matched,
+                "runners": [
+                    {
+                        "selection_id": r.selection_id,
+                        "name": r.runner_name,
+                        "back_price": r.back_price,
+                        "back_size": r.back_size,
+                        "lay_price": r.lay_price,
+                        "lay_size": r.lay_size,
+                        "last_traded": r.last_traded_price,
+                        "total_matched": r.total_matched
+                    }
+                    for r in market.runners
+                ]
+            }
+    
+    return {"error": "Market not found or service unavailable"}
+
+
+# =============================================================================
+# RACE REPLAYS
+# =============================================================================
+
+@router.get("/replays")
+async def get_race_replays(
+    track: Optional[str] = Query(None, description="Filter by track name"),
+    country: Optional[str] = Query(None, description="Country code: UK, AU, US, HK"),
+    race_type: str = Query("horse", description="'horse' or 'greyhound'"),
+    limit: int = Query(20, ge=1, le=100)
+):
+    """
+    Get race replays for form research.
+    Shows past race videos with results and analysis.
+    """
+    service = get_replay_service()
+    
+    replays = await service.get_replays(
+        track=track,
+        country=country,
+        race_type=race_type,
+        limit=limit
+    )
+    
+    return {
+        "count": len(replays),
+        "replays": [
+            {
+                "replay_id": r.replay_id,
+                "track": r.track,
+                "race_number": r.race_number,
+                "race_name": r.race_name,
+                "race_date": r.race_date.isoformat(),
+                "distance": r.distance,
+                "race_type": r.race_type,
+                "country": r.country,
+                "video_url": r.video_url,
+                "embed_url": r.embed_url,
+                "thumbnail_url": r.thumbnail_url,
+                "source": r.source,
+                "duration_seconds": r.duration_seconds,
+                "result": {
+                    "winner": r.winner,
+                    "winner_odds": r.winner_odds,
+                    "runner_up": r.runner_up,
+                    "runner_up_odds": r.runner_up_odds,
+                    "third": r.third,
+                    "third_odds": r.third_odds
+                },
+                "going": r.going,
+                "total_runners": r.total_runners,
+                "prize_money": r.prize_money,
+                "key_moments": r.key_moments,
+                "form_insights": r.form_insights
+            }
+            for r in replays
+        ]
+    }
+
+
+@router.get("/replays/{replay_id}")
+async def get_replay_detail(replay_id: str):
+    """Get detailed information about a specific race replay."""
+    service = get_replay_service()
+    
+    replay = await service.get_replay_by_id(replay_id)
+    
+    if replay:
+        return {
+            "replay_id": replay.replay_id,
+            "track": replay.track,
+            "race_number": replay.race_number,
+            "race_name": replay.race_name,
+            "race_date": replay.race_date.isoformat(),
+            "distance": replay.distance,
+            "race_type": replay.race_type,
+            "country": replay.country,
+            "video_url": replay.video_url,
+            "embed_url": replay.embed_url,
+            "thumbnail_url": replay.thumbnail_url,
+            "source": replay.source,
+            "duration_seconds": replay.duration_seconds,
+            "result": {
+                "winner": replay.winner,
+                "winner_odds": replay.winner_odds,
+                "runner_up": replay.runner_up,
+                "runner_up_odds": replay.runner_up_odds,
+                "third": replay.third,
+                "third_odds": replay.third_odds
+            },
+            "going": replay.going,
+            "total_runners": replay.total_runners,
+            "prize_money": replay.prize_money,
+            "key_moments": replay.key_moments,
+            "form_insights": replay.form_insights
+        }
+    
+    return {"error": "Replay not found"}
+
+
+@router.get("/replays/runner/{runner_name}")
+async def get_runner_replays(
+    runner_name: str,
+    limit: int = Query(5, ge=1, le=20)
+):
+    """Get replays featuring a specific runner for form analysis."""
+    service = get_replay_service()
+    
+    replays = await service.get_runner_replays(runner_name, limit=limit)
+    
+    return {
+        "runner": runner_name,
+        "count": len(replays),
+        "replays": [
+            {
+                "replay_id": r.replay_id,
+                "track": r.track,
+                "race_name": r.race_name,
+                "race_date": r.race_date.isoformat(),
+                "embed_url": r.embed_url,
+                "thumbnail_url": r.thumbnail_url,
+                "winner": r.winner,
+                "winner_odds": r.winner_odds
+            }
+            for r in replays
+        ]
+    }
+
+
+# =============================================================================
+# RACE COUNTDOWN & ALERTS
+# =============================================================================
+
+@router.get("/countdown")
+def get_race_countdown():
+    """
+    Get countdown timers for upcoming races.
+    Returns races sorted by time with countdown in seconds.
+    Useful for setting alerts.
+    """
+    service = get_racing_service()
+    races = service.get_todays_races()
+    
+    now = datetime.now(timezone.utc)
+    
+    upcoming = []
+    for race in races:
+        seconds_until = int((race.post_time - now).total_seconds())
+        
+        if seconds_until > -300:  # Include races up to 5 mins after post time
+            upcoming.append({
+                "race_id": race.id,
+                "track": race.track,
+                "race_number": race.race_number,
+                "race_name": race.race_name,
+                "post_time": race.post_time.isoformat(),
+                "seconds_until_post": max(0, seconds_until),
+                "countdown_display": _format_countdown(seconds_until),
+                "status": _get_race_status(seconds_until),
+                "race_type": race.race_type.value,
+                "country": race.country,
+                "runners_count": len(race.runners),
+                "video": video_service.get_race_video_url(race.track, race.race_number, race.country)
+                    if race.race_type == RaceType.HORSE
+                    else video_service.get_greyhound_video_url(race.track, race.race_number, race.country)
+            })
+    
+    # Sort by time
+    upcoming.sort(key=lambda x: x["seconds_until_post"])
+    
+    # Group by status
+    about_to_start = [r for r in upcoming if r["status"] == "ABOUT_TO_START"]
+    starting_soon = [r for r in upcoming if r["status"] == "STARTING_SOON"]
+    upcoming_races = [r for r in upcoming if r["status"] == "UPCOMING"]
+    
+    return {
+        "server_time": now.isoformat(),
+        "about_to_start": about_to_start,
+        "starting_soon": starting_soon,
+        "upcoming": upcoming_races[:20],
+        "all_races": len(upcoming)
+    }
+
+
+@router.get("/next-races")
+def get_next_races(limit: int = Query(5, ge=1, le=20)):
+    """
+    Get the next N races about to start.
+    Perfect for quick monitoring.
+    """
+    service = get_racing_service()
+    races = service.get_todays_races()
+    
+    now = datetime.now(timezone.utc)
+    
+    # Filter to future races and sort by post time
+    future_races = [
+        r for r in races 
+        if (r.post_time - now).total_seconds() > -60  # Allow 1 min after post
+    ]
+    future_races.sort(key=lambda r: r.post_time)
+    
+    results = []
+    for race in future_races[:limit]:
+        seconds_until = int((race.post_time - now).total_seconds())
+        
+        results.append({
+            "race_id": race.id,
+            "track": race.track,
+            "race_number": race.race_number,
+            "post_time": race.post_time.isoformat(),
+            "countdown": _format_countdown(seconds_until),
+            "seconds": max(0, seconds_until),
+            "status": _get_race_status(seconds_until),
+            "race_type": race.race_type.value,
+            "country": race.country,
+            "going": race.going.value,
+            "distance": race.distance
+        })
+    
+    return {
+        "count": len(results),
+        "races": results
+    }
+
+
+def _format_countdown(seconds: int) -> str:
+    """Format seconds into human-readable countdown."""
+    if seconds <= 0:
+        return "LIVE NOW"
+    elif seconds < 60:
+        return f"{seconds}s"
+    elif seconds < 3600:
+        mins = seconds // 60
+        secs = seconds % 60
+        return f"{mins}m {secs}s"
+    else:
+        hours = seconds // 3600
+        mins = (seconds % 3600) // 60
+        return f"{hours}h {mins}m"
+
+
+def _get_race_status(seconds: int) -> str:
+    """Get race status based on countdown."""
+    if seconds <= 0:
+        return "LIVE"
+    elif seconds <= 60:
+        return "ABOUT_TO_START"
+    elif seconds <= 300:
+        return "STARTING_SOON"
+    else:
+        return "UPCOMING"
+

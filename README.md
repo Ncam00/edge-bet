@@ -79,15 +79,60 @@ See `backend/.env.example` for required keys:
 | POST | `/api/v1/auth/register` | Register |
 | POST | `/api/v1/auth/login` | Login → JWT |
 
+## Racing API Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/racing/tips` | AI-powered racing tips |
+| GET | `/racing/races/today` | Today's races by type |
+| GET | `/racing/runner/{race_id}/{number}` | Runner form analysis |
+| GET | `/racing/video/streams` | Live racing video streams |
+| GET | `/racing/betfair/markets` | Betfair live odds |
+| GET | `/racing/betfair/market/{id}` | Specific market prices |
+| GET | `/racing/replays` | Race replays for research |
+| GET | `/racing/replays/{id}` | Replay detail + key moments |
+| GET | `/racing/countdown` | Races by time to start |
+| GET | `/racing/next-races` | Next N races with countdown |
+
 ## Roadmap
 
+### Core Platform
 - [x] Project scaffold
-- [ ] Data ingestion (Odds API + NBA API)
-- [ ] Feature engineering pipeline
-- [ ] XGBoost model + calibration
-- [ ] Value bet EV engine
-- [ ] FastAPI endpoints
-- [ ] React Native screens
+- [x] Data ingestion (Odds API + NBA API)
+- [x] Feature engineering pipeline
+- [x] XGBoost model + calibration
+- [x] Value bet EV engine
+- [x] FastAPI endpoints
+- [x] React Native screens
+- [x] User authentication (JWT)
 - [ ] Push notifications (Firebase)
 - [ ] Retraining loop
 - [ ] Stripe freemium paywall
+
+### Multi-Sport Support (40+ Sports)
+- [x] NBA, NFL, MLB, NHL, MMA
+- [x] Soccer (EPL, La Liga, Serie A, Champions League)
+- [x] Tennis, Golf, Cricket
+- [x] College sports (NCAA)
+- [x] Esports (League of Legends, CS2, Dota 2)
+
+### Racing Module
+- [x] Horse racing (UK, AU, US, HK, Ireland, France)
+- [x] Greyhound racing (UK, AU, US)
+- [x] AI-powered form analysis
+- [x] WIN/PLACE/EACH_WAY recommendations
+- [x] Live racing video streams (free)
+- [x] Betfair Exchange API integration (live odds)
+- [x] Race replays for form research
+- [x] Live race countdown with alerts
+- [x] Enhanced video player (fullscreen mode)
+
+### Bonus Features
+- [x] Dark mode UI with modern design
+- [x] Real-time odds comparison
+- [x] Confidence scoring (HIGH/MEDIUM/LOW)
+- [x] Value bet detection with EV calculation
+- [x] Multi-region support (US, UK, AU, EU)
+- [x] Live video from 10+ racing channels
+- [x] Form trends and key moments analysis
+- [x] Auto-refresh countdown every 30 seconds

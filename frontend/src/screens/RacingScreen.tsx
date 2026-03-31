@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, RefreshControl, Modal, Platform } from 'react-native';
-import { getTodaysRaces, getRacingTips, getRacingSummary, getRunnerAnalysis, getLiveVideoStreams, getYouTubeRacingStreams, getRaceVideo } from '../services/api';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, RefreshControl, Modal, Platform, Dimensions } from 'react-native';
+import { getTodaysRaces, getRacingTips, getRacingSummary, getRunnerAnalysis, getLiveVideoStreams, getRaceReplays, getRaceCountdown, getBetfairMarkets } from '../services/api';
 import { colors, spacing, radius } from '../utils/theme';
 
 interface Tip {
@@ -65,6 +65,40 @@ interface VideoStream {
   thumbnail?: string;
 }
 
+interface RaceReplay {
+  replay_id: string;
+  track: string;
+  race_number: number;
+  race_name: string;
+  race_date: string;
+  distance: string;
+  country: string;
+  embed_url: string;
+  thumbnail_url: string;
+  source: string;
+  duration_seconds: number;
+  result: {
+    winner: string;
+    winner_odds: number;
+    runner_up: string;
+    runner_up_odds: number;
+  };
+  going: string;
+  key_moments: string[];
+  form_insights: string[];
+}
+
+interface CountdownRace {
+  race_id: string;
+  track: string;
+  race_number: number;
+  countdown_seconds: number;
+  countdown_display: string;
+  status: string;
+  race_type: string;
+  country: string;
+}
+
 interface RacingSummary {
   horses: { races: number; tracks: string[]; value_bets: number; high_confidence: number };
   greyhounds: { races: number; tracks: string[]; value_bets: number; high_confidence: number };
@@ -84,7 +118,9 @@ export const RacingScreen = () => {
   const [races, setRaces] = useState<Race[]>([]);
   const [summary, setSummary] = useState<RacingSummary | null>(null);
   const [videoStreams, setVideoStreams] = useState<VideoStream[]>([]);
-  const [activeTab, setActiveTab] = useState<'tips' | 'races' | 'live'>('tips');
+  const [replays, setReplays] = useState<RaceReplay[]>([]);
+  const [countdown, setCountdown] = useState<CountdownRace[]>([]);
+  const [activeTab, setActiveTab] = useState<'tips' | 'races' | 'live' | 'replays'>('tips');
   const [raceTypeFilter, setRaceTypeFilter] = useState<'all' | 'horse' | 'greyhound'>('all');
   const [regionFilter, setRegionFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
@@ -94,26 +130,57 @@ export const RacingScreen = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<VideoStream | null>(null);
   const [selectedRaceVideo, setSelectedRaceVideo] = useState<Race | null>(null);
+  const [selectedReplay, setSelectedReplay] = useState<RaceReplay | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const loadData = async () => {
     try {
       const raceType = raceTypeFilter === 'all' ? undefined : raceTypeFilter;
       const region = regionFilter === 'all' ? undefined : regionFilter;
-      const [tipsData, racesData, summaryData, videoData] = await Promise.all([
+      const [tipsData, racesData, summaryData, videoData, replaysData, countdownData] = await Promise.all([
         getRacingTips(20, raceType).catch(() => ({ tips: [] })),
         getTodaysRaces(raceType).catch(() => ({ races: [] })),
         getRacingSummary().catch(() => null),
         getLiveVideoStreams(region).catch(() => ({ streams: [] })),
+        getRaceReplays(undefined, undefined, raceType, 15).catch(() => ({ replays: [] })),
+        getRaceCountdown().catch(() => ({ about_to_start: [], starting_soon: [], upcoming: [] })),
       ]);
       setTips(Array.isArray(tipsData?.tips) ? tipsData.tips : []);
       setRaces(Array.isArray(racesData?.races) ? racesData.races : []);
       setSummary(summaryData);
       setVideoStreams(Array.isArray(videoData?.streams) ? videoData.streams : []);
+      setReplays(Array.isArray(replaysData?.replays) ? replaysData.replays : []);
+      // Combine countdown races
+      const allCountdown = [
+        ...(countdownData?.about_to_start || []),
+        ...(countdownData?.starting_soon || []),
+        ...(countdownData?.upcoming || []).slice(0, 5)
+      ];
+      setCountdown(allCountdown);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
+  
+  // Auto-refresh countdown every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const countdownData = await getRaceCountdown().catch(() => null);
+        if (countdownData) {
+          const allCountdown = [
+            ...(countdownData.about_to_start || []),
+            ...(countdownData.starting_soon || []),
+            ...(countdownData.upcoming || []).slice(0, 5)
+          ];
+          setCountdown(allCountdown);
+        }
+      } catch {}
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -194,6 +261,15 @@ export const RacingScreen = () => {
           ))}
         </View>
 
+        {/* Countdown Alert Banner */}
+        {countdown.length > 0 && countdown[0].countdown_seconds !== undefined && countdown[0].countdown_seconds < 120 && (
+          <View style={styles.countdownBanner}>
+            <Text style={styles.countdownBannerText}>
+              🔔 {countdown[0].track} R{countdown[0].race_number} - {countdown[0].countdown_display || 'Starting soon!'}
+            </Text>
+          </View>
+        )}
+
         {/* Tab Row */}
         <View style={styles.tabRow}>
           <TouchableOpacity
@@ -212,7 +288,13 @@ export const RacingScreen = () => {
             style={[styles.tab, activeTab === 'live' && styles.tabActive]}
             onPress={() => setActiveTab('live')}
           >
-            <Text style={[styles.tabText, activeTab === 'live' && styles.tabTextActive]}>📺 Live TV</Text>
+            <Text style={[styles.tabText, activeTab === 'live' && styles.tabTextActive]}>📺 Live</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'replays' && styles.tabActive]}
+            onPress={() => setActiveTab('replays')}
+          >
+            <Text style={[styles.tabText, activeTab === 'replays' && styles.tabTextActive]}>🎬 Replays</Text>
           </TouchableOpacity>
         </View>
 
@@ -248,7 +330,7 @@ export const RacingScreen = () => {
               </View>
             )}
           </>
-        ) : (
+        ) : activeTab === 'live' ? (
           <>
             {/* Live TV Tab */}
             <Text style={styles.sectionTitle}>📺 Live Racing Streams</Text>
@@ -285,7 +367,45 @@ export const RacingScreen = () => {
               </View>
             )}
           </>
-        )}
+        ) : activeTab === 'replays' ? (
+          <>
+            {/* Replays Tab */}
+            <Text style={styles.sectionTitle}>🎬 Race Replays</Text>
+            <Text style={styles.sectionSubtitle}>Study past races for form research</Text>
+            
+            {replays.length > 0 ? (
+              replays.map((replay, index) => (
+                <TouchableOpacity 
+                  key={`${replay.id}-${index}`} 
+                  style={styles.replayCard}
+                  onPress={() => setSelectedReplay(replay)}
+                >
+                  <View style={styles.replayHeader}>
+                    <Text style={styles.replayTrack}>{replay.track}</Text>
+                    <Text style={styles.replayGrade}>{replay.grade}</Text>
+                  </View>
+                  <Text style={styles.replayTitle}>Race {replay.race_number}: {replay.race_name}</Text>
+                  <Text style={styles.replayDate}>{replay.race_date}</Text>
+                  <View style={styles.replayRunners}>
+                    <Text style={styles.replayWinner}>🏆 {replay.winner}</Text>
+                    {replay.runner_up && <Text style={styles.replayRunnerUp}>🥈 {replay.runner_up}</Text>}
+                  </View>
+                  <View style={styles.replayMeta}>
+                    <Text style={styles.replayMetaText}>{replay.race_type === 'horse' ? '🏇' : '🐕'} {replay.distance}</Text>
+                    <Text style={styles.replayMetaText}>⏱️ {replay.duration}</Text>
+                    <Text style={styles.watchBtn}>▶️ Watch</Text>
+                  </View>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyEmoji}>🎬</Text>
+                <Text style={styles.emptyText}>No replays available</Text>
+                <Text style={styles.emptySubtext}>Check back for past race footage</Text>
+              </View>
+            )}
+          </>
+        ) : null}
       </ScrollView>
 
       {/* Runner Detail Modal */}
@@ -311,13 +431,21 @@ export const RacingScreen = () => {
 
       {/* Video Stream Modal */}
       <Modal visible={!!selectedVideo} animationType="slide" transparent>
-        <View style={styles.videoModalOverlay}>
-          <View style={styles.videoModalContent}>
+        <View style={[styles.videoModalOverlay, isFullscreen && styles.fullscreenOverlay]}>
+          <View style={[styles.videoModalContent, isFullscreen && styles.fullscreenContent]}>
             <View style={styles.videoModalHeader}>
               <Text style={styles.videoModalTitle}>📺 {selectedVideo?.name}</Text>
-              <TouchableOpacity onPress={() => setSelectedVideo(null)}>
-                <Text style={styles.modalCloseText}>✕</Text>
-              </TouchableOpacity>
+              <View style={styles.videoControls}>
+                <TouchableOpacity 
+                  style={styles.videoControlBtn}
+                  onPress={() => setIsFullscreen(!isFullscreen)}
+                >
+                  <Text style={styles.videoControlText}>{isFullscreen ? '🗗' : '⛶'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => { setSelectedVideo(null); setIsFullscreen(false); }}>
+                  <Text style={styles.modalCloseText}>✕</Text>
+                </TouchableOpacity>
+              </View>
             </View>
             {selectedVideo && (
               <VideoPlayer 
@@ -332,15 +460,23 @@ export const RacingScreen = () => {
 
       {/* Race Video Modal */}
       <Modal visible={!!selectedRaceVideo} animationType="slide" transparent>
-        <View style={styles.videoModalOverlay}>
-          <View style={styles.videoModalContent}>
+        <View style={[styles.videoModalOverlay, isFullscreen && styles.fullscreenOverlay]}>
+          <View style={[styles.videoModalContent, isFullscreen && styles.fullscreenContent]}>
             <View style={styles.videoModalHeader}>
               <Text style={styles.videoModalTitle}>
                 📺 {selectedRaceVideo?.track} R{selectedRaceVideo?.race_number}
               </Text>
-              <TouchableOpacity onPress={() => setSelectedRaceVideo(null)}>
-                <Text style={styles.modalCloseText}>✕</Text>
-              </TouchableOpacity>
+              <View style={styles.videoControls}>
+                <TouchableOpacity 
+                  style={styles.videoControlBtn}
+                  onPress={() => setIsFullscreen(!isFullscreen)}
+                >
+                  <Text style={styles.videoControlText}>{isFullscreen ? '🗗' : '⛶'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => { setSelectedRaceVideo(null); setIsFullscreen(false); }}>
+                  <Text style={styles.modalCloseText}>✕</Text>
+                </TouchableOpacity>
+              </View>
             </View>
             {selectedRaceVideo?.video && (
               <VideoPlayer 
@@ -349,6 +485,100 @@ export const RacingScreen = () => {
                 name={`${selectedRaceVideo.track} Race ${selectedRaceVideo.race_number}`}
                 backupUrl={selectedRaceVideo.video.backup_url}
               />
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Replay Modal */}
+      <Modal visible={!!selectedReplay} animationType="slide" transparent>
+        <View style={styles.videoModalOverlay}>
+          <View style={styles.replayModalContent}>
+            <View style={styles.videoModalHeader}>
+              <Text style={styles.videoModalTitle}>🎬 {selectedReplay?.race_name}</Text>
+              <TouchableOpacity onPress={() => setSelectedReplay(null)}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            {selectedReplay && (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {/* Video Player */}
+                <View style={styles.replayVideoArea}>
+                  <View style={styles.replayVideoPlaceholder}>
+                    <Text style={styles.replayVideoIcon}>▶️</Text>
+                    <Text style={styles.replayVideoText}>Replay Video</Text>
+                    <Text style={styles.replayVideoSubtext}>{selectedReplay.track} - {selectedReplay.race_date}</Text>
+                  </View>
+                </View>
+
+                {/* Race Info */}
+                <View style={styles.replayInfoSection}>
+                  <Text style={styles.replayInfoTitle}>Race Details</Text>
+                  <View style={styles.replayInfoRow}>
+                    <Text style={styles.replayInfoLabel}>Track:</Text>
+                    <Text style={styles.replayInfoValue}>{selectedReplay.track} ({selectedReplay.country})</Text>
+                  </View>
+                  <View style={styles.replayInfoRow}>
+                    <Text style={styles.replayInfoLabel}>Race:</Text>
+                    <Text style={styles.replayInfoValue}>R{selectedReplay.race_number} - {selectedReplay.race_name}</Text>
+                  </View>
+                  <View style={styles.replayInfoRow}>
+                    <Text style={styles.replayInfoLabel}>Class:</Text>
+                    <Text style={styles.replayInfoValue}>{selectedReplay.grade}</Text>
+                  </View>
+                  <View style={styles.replayInfoRow}>
+                    <Text style={styles.replayInfoLabel}>Distance:</Text>
+                    <Text style={styles.replayInfoValue}>{selectedReplay.distance}</Text>
+                  </View>
+                </View>
+
+                {/* Results */}
+                <View style={styles.replayInfoSection}>
+                  <Text style={styles.replayInfoTitle}>Results</Text>
+                  <View style={styles.replayResultRow}>
+                    <Text style={styles.replayResultPos}>🏆 1st</Text>
+                    <Text style={styles.replayResultRunner}>{selectedReplay.winner}</Text>
+                    <Text style={styles.replayResultOdds}>{selectedReplay.winning_time}</Text>
+                  </View>
+                  {selectedReplay.runner_up && (
+                    <View style={styles.replayResultRow}>
+                      <Text style={styles.replayResultPos}>🥈 2nd</Text>
+                      <Text style={styles.replayResultRunner}>{selectedReplay.runner_up}</Text>
+                    </View>
+                  )}
+                  {selectedReplay.third && (
+                    <View style={styles.replayResultRow}>
+                      <Text style={styles.replayResultPos}>🥉 3rd</Text>
+                      <Text style={styles.replayResultRunner}>{selectedReplay.third}</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Key Moments */}
+                {selectedReplay.key_moments && selectedReplay.key_moments.length > 0 && (
+                  <View style={styles.replayInfoSection}>
+                    <Text style={styles.replayInfoTitle}>Key Moments</Text>
+                    {selectedReplay.key_moments.map((moment, index) => (
+                      <View key={index} style={styles.keyMomentRow}>
+                        <Text style={styles.keyMomentTime}>⏱️ {moment.timestamp || moment.time}</Text>
+                        <Text style={styles.keyMomentText}>{moment.description || moment.event}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Form Insights */}
+                {selectedReplay.form_insights && selectedReplay.form_insights.length > 0 && (
+                  <View style={styles.replayInfoSection}>
+                    <Text style={styles.replayInfoTitle}>💡 Form Insights</Text>
+                    {selectedReplay.form_insights.map((insight, index) => (
+                      <View key={index} style={styles.formInsightRow}>
+                        <Text style={styles.formInsightText}>• {insight}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </ScrollView>
             )}
           </View>
         </View>
@@ -948,4 +1178,55 @@ const styles = StyleSheet.create({
   
   watchVideoBtn: { backgroundColor: '#ff000020', paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.md, marginTop: spacing.sm, alignSelf: 'flex-start' },
   watchVideoBtnText: { fontSize: 13, fontWeight: '600', color: '#ff0000' },
+
+  // Countdown Banner
+  countdownBanner: { backgroundColor: '#ff990030', borderRadius: radius.md, padding: spacing.sm, marginBottom: spacing.md, borderWidth: 1, borderColor: '#ff9900' },
+  countdownBannerText: { fontSize: 14, fontWeight: '600', color: '#ff9900', textAlign: 'center' },
+
+  // Video Controls
+  videoControls: { flexDirection: 'row', alignItems: 'center' },
+  videoControlBtn: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, marginRight: spacing.sm },
+  videoControlText: { fontSize: 18, color: colors.textPrimary },
+  fullscreenOverlay: { margin: 0 },
+  fullscreenContent: { flex: 1, margin: 0, borderRadius: 0 },
+
+  // Replay Cards
+  replayCard: { backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md, borderLeftWidth: 4, borderLeftColor: colors.accent },
+  replayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
+  replayTrack: { fontSize: 14, fontWeight: '700', color: colors.accent },
+  replayGrade: { fontSize: 11, fontWeight: '600', color: colors.textMuted, backgroundColor: colors.background, paddingHorizontal: spacing.xs, paddingVertical: 2, borderRadius: 4 },
+  replayTitle: { fontSize: 16, fontWeight: '600', color: colors.textPrimary, marginBottom: 2 },
+  replayDate: { fontSize: 12, color: colors.textMuted, marginBottom: spacing.sm },
+  replayRunners: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: spacing.sm },
+  replayWinner: { fontSize: 13, fontWeight: '600', color: colors.value, marginRight: spacing.md },
+  replayRunnerUp: { fontSize: 13, color: colors.textMuted },
+  replayMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border },
+  replayMetaText: { fontSize: 12, color: colors.textMuted },
+  watchBtn: { fontSize: 14, fontWeight: '600', color: colors.accent },
+
+  // Replay Modal
+  replayModalContent: { backgroundColor: colors.background, margin: spacing.md, borderRadius: radius.lg, overflow: 'hidden', maxHeight: '90%' },
+  replayVideoArea: { backgroundColor: '#000', padding: spacing.xl, alignItems: 'center' },
+  replayVideoPlaceholder: { alignItems: 'center', paddingVertical: spacing.lg },
+  replayVideoIcon: { fontSize: 64, marginBottom: spacing.sm },
+  replayVideoText: { fontSize: 18, fontWeight: '600', color: '#fff', marginBottom: 4 },
+  replayVideoSubtext: { fontSize: 12, color: '#888' },
+  
+  replayInfoSection: { padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+  replayInfoTitle: { fontSize: 15, fontWeight: '700', color: colors.textPrimary, marginBottom: spacing.sm },
+  replayInfoRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
+  replayInfoLabel: { fontSize: 13, color: colors.textMuted },
+  replayInfoValue: { fontSize: 13, fontWeight: '500', color: colors.textPrimary },
+  
+  replayResultRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border + '50' },
+  replayResultPos: { fontSize: 14, fontWeight: '600', color: colors.textPrimary, width: 60 },
+  replayResultRunner: { fontSize: 14, color: colors.textPrimary, flex: 1 },
+  replayResultOdds: { fontSize: 12, color: colors.textMuted },
+  
+  keyMomentRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border + '30' },
+  keyMomentTime: { fontSize: 12, fontWeight: '600', color: colors.accent, width: 65 },
+  keyMomentText: { fontSize: 12, color: colors.textPrimary, flex: 1 },
+  
+  formInsightRow: { paddingVertical: 4 },
+  formInsightText: { fontSize: 13, color: colors.textPrimary },
 });

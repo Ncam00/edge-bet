@@ -158,6 +158,34 @@ export const getYouTubeRacingStreams = () =>
 export const getRegionalStreams = (region: string) =>
   api.get(`/racing/video/regional/${region}`).then((r) => r.data);
 
+// ── Betfair Exchange Live Odds ────────────────────────────────
+export const getBetfairMarkets = (raceType?: string, country?: string, hoursAhead: number = 4) =>
+  api.get('/racing/betfair/markets', { 
+    params: { race_type: raceType, country, hours_ahead: hoursAhead } 
+  }).then((r) => r.data);
+
+export const getBetfairMarketPrices = (marketId: string) =>
+  api.get(`/racing/betfair/market/${marketId}`).then((r) => r.data);
+
+// ── Race Replays ──────────────────────────────────────────────
+export const getRaceReplays = (track?: string, country?: string, raceType?: string, limit: number = 20) =>
+  api.get('/racing/replays', { 
+    params: { track, country, race_type: raceType, limit } 
+  }).then((r) => r.data);
+
+export const getReplayDetail = (replayId: string) =>
+  api.get(`/racing/replays/${replayId}`).then((r) => r.data);
+
+export const getRunnerReplays = (runnerName: string, limit: number = 5) =>
+  api.get(`/racing/replays/runner/${runnerName}`, { params: { limit } }).then((r) => r.data);
+
+// ── Race Countdown & Alerts ───────────────────────────────────
+export const getRaceCountdown = () =>
+  api.get('/racing/countdown').then((r) => r.data);
+
+export const getNextRaces = (limit: number = 5) =>
+  api.get('/racing/next-races', { params: { limit } }).then((r) => r.data);
+
 // ── Types ─────────────────────────────────────────────────────
 export interface PropRequest {
   player: string;
